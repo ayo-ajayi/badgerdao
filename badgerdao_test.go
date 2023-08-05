@@ -1,13 +1,16 @@
 package badgerdao
 
 import (
+	"strconv"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/dgraph-io/badger/v3"
 )
 
 func setupTestRepository(t *testing.T) *EntityRepository {
-	dbPath := "" 
+	dbPath := ""
 	repo, err := NewEntityRepository(badger.DefaultOptions(dbPath).WithInMemory(true).WithLogger(nil))
 	if err != nil {
 		t.Fatalf("Error creating entity repository: %v", err)
@@ -138,5 +141,66 @@ func TestEntityRepository_GetAll(t *testing.T) {
 		if !found {
 			t.Fatalf("Expected entity with key %s and value %s, but not found in GetAll result", string(test.Key), string(test.Value))
 		}
+	}
+}
+
+func TestEntityRepository_GenerateUniqueID(t *testing.T) {
+	repo := setupTestRepository(t)
+	defer repo.Close()
+
+	uniqueIDs := make(map[string]bool)
+	for i := 0; i < 5; i++ {
+		for {
+			id, err := repo.GenerateUniqueID()
+			if err != nil {
+				t.Fatalf("Error generating unique ID: %v", err)
+			}
+			exists, err := repo.KeyExists(id)
+			if err != nil {
+				t.Fatalf("Error checking if key %s exists: %v", string(id), err)
+			}
+
+			if !exists {
+				err = repo.Put(id, []byte("some_value"))
+				if err != nil {
+					t.Fatalf("Error saving unique ID to the database: %v", err)
+				}
+				uniqueIDs[string(id)] = true
+				break
+			}
+		}
+	}
+}
+
+func TestEntityRepository_GetDateFromUniqueID(t *testing.T) {
+	repo := setupTestRepository(t)
+	defer repo.Close()
+
+	id, err := repo.GenerateUniqueID()
+	if err != nil {
+		t.Fatalf("Error generating unique ID: %v", err)
+	}
+	dateStr, err := repo.GetDateFromUniqueID(string(id))
+	if err != nil {
+		t.Fatalf("Error converting unique ID to date: %v", err)
+	}
+	parsedTime, err := time.Parse("2006-01-02 15:04:05", dateStr)
+	if err != nil {
+		t.Fatalf("Error parsing date string: %v", err)
+	}
+
+	parts := strings.Split(string(id), "-")
+	if len(parts) != 2 {
+		t.Fatalf("Invalid unique ID format: %s", string(id))
+	}
+	originalTimestampStr := parts[0]
+	originalTimestampMs, err := strconv.ParseInt(originalTimestampStr, 10, 64)
+	if err != nil {
+		t.Fatalf("Error parsing timestamp from original ID: %v", err)
+	}
+	originalTimestampSec := originalTimestampMs / 1e9
+
+	if parsedTime.Unix() != originalTimestampSec {
+		t.Fatalf("Original timestamp %d does not match the parsed timestamp %d", originalTimestampSec, parsedTime.Unix())
 	}
 }
