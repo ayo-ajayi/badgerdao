@@ -39,7 +39,7 @@ func (e *EntityRepository) Close() error {
 
 func (e *EntityRepository) Put(key, value []byte) error {
 	return e.db.Update(func(txn *badger.Txn) error {
-		entry := badger.NewEntry(key, value).WithTTL(5 * time.Second)
+		entry := badger.NewEntry(key, value)
 		return txn.SetEntry(entry)
 	})
 }
